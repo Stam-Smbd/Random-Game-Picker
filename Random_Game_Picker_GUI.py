@@ -25,8 +25,13 @@ def pick_game_gui():
     if not gamelist:
         messagebox.showwarning("Empty List", "Add some games first, dummy!")
         return
-    
-    chosen = random.choice(gamelist)
+    active_pool = [g for g in gamelist if g.get('enabled', True)]
+
+    if not active_pool:
+        messagebox.showwarning("Pool Empty", "All games are excluded, u stupid or picky?")
+        return
+
+    chosen = random.choice(active_pool)
     label_result.config(text=f"Selected: {chosen['name']}")
     def launch():
         clean_path = os.path.normpath(chosen['path'])
@@ -40,8 +45,12 @@ def pick_game_gui():
 
 def update_listbox():
     game_listbox.delete(0, tk.END)
-    for game in gamelist:
+    for i, game in enumerate(gamelist):
         game_listbox.insert(tk.END, game['name'])
+        if not game.get('enabled', True):
+            game_listbox.itemconfig(i, {'fg': 'grey'})
+        else:
+            game_listbox.itemconfig(i, {'fg': 'black'})
 
 def browse_for_path(target_entry):
     filename = filedialog.askopenfilename(
@@ -53,10 +62,20 @@ def browse_for_path(target_entry):
         target_entry.delete(0, tk.END)
         target_entry.insert(0, universal_path)
 
+def toggle_game_status():
+    try:
+        selected_index = game_listbox.curselection()[0]
+        game = gamelist[selected_index]
+        game['enabled'] = not game.get('enabled', True)
+        save_gamelist()
+        update_listbox()
+    except IndexError:
+        messagebox.showwarning("Select game", "Please select a game to toggle.")
+
 def open_add_window():
     add_win = tk.Toplevel(root)
     add_win.title("Add New Game")
-    add_win.geometry("500x200")
+    add_win.geometry("500x300")
 
     tk.Label(add_win, text="Game Name:").pack(pady=5)
     name_entry = tk.Entry(add_win, width=30)
@@ -69,11 +88,23 @@ def open_add_window():
     ttk.Button(add_win, text="Browse...", 
           command=lambda: browse_for_path(path_entry)).pack(pady=5)
     
+    args_label = tk.Label(add_win, text="Arguments (optional, space separated):")
+    args_entry = tk.Entry(add_win, width=50)
+
+    def show_args():
+        args_label.pack(pady=2)
+        args_entry.pack(pady=5)
+        btn_args.destroy()
+
+    btn_args = ttk.Button(add_win, text="Add Launch Arguments", command=show_args)
+    btn_args.pack(pady=5)
+    
     def submit():
         name = name_entry.get()
         path = path_entry.get()
+        raw_args = args_entry.get().split() if args_entry.winfo_viewable() else []
         if name and path:
-            gamelist.append({"name": name, "path": path, "args": []})
+            gamelist.append({"name": name, "path": path, "args": raw_args, "enabled":True})
             save_gamelist()
             update_listbox()
             add_win.destroy()
@@ -89,7 +120,7 @@ def open_edit_window():
 
         edit_win = tk.Toplevel(root)
         edit_win.title(f"Edit {game_to_edit['name']}")
-        edit_win.geometry("500x200")
+        edit_win.geometry("500x300")
 
         tk.Label(edit_win, text="Game Name:").pack(pady=5)
         name_entry = tk.Entry(edit_win, width=30)
@@ -103,10 +134,29 @@ def open_edit_window():
 
         ttk.Button(edit_win, text="Browse...", 
           command=lambda: browse_for_path(path_entry)).pack(pady=5)
+        
+        args_label = tk.Label(edit_win, text="Arguments:")
+        args_entry = tk.Entry(edit_win, width=50)
+        args_entry.insert(0, " ".join(game_to_edit.get('args', [])))
+
+        def show_args():
+            args_label.pack(pady=2)
+            args_entry.pack(pady=5)
+            btn_args.destroy()
+
+        btn_args = ttk.Button(edit_win, text="Edit Launch Arguments", command=show_args)
+
+        if game_to_edit.get('args'):
+            show_args()
+        else:
+            btn_args.pack(pady=5)
 
         def save_changes():
             game_to_edit['name'] = name_entry.get()
             game_to_edit['path'] = path_entry.get()
+            
+            if args_entry.winfo_viewable():
+                game_to_edit['args'] = args_entry.get().split()
             
             save_gamelist()
             update_listbox()
@@ -151,6 +201,9 @@ game_listbox.grid(row=1, column=1, rowspan=2, padx=10)
 
 btn_frame = tk.Frame(root)
 btn_frame.grid(row=3, column=1, pady=5)
+
+btn_toggle = ttk.Button(btn_frame, text="Exclude/Include", command=toggle_game_status)
+btn_toggle.pack(side="left", padx=5)
 
 btn_edit = ttk.Button(btn_frame, text="Edit Selected", command=open_edit_window)
 btn_edit.pack(side="left", padx=5)
